@@ -1,197 +1,175 @@
-// URL to explain PHASER scene: https://rexrainbow.github.io/phaser3-rex-notes/docs/site/scene/
-
 export default class Game extends Phaser.Scene {
   constructor() {
     super("game");
+    // Estados intro/jump: 0=intro,1=esp1,2=esp2,3=activo
+    this.introState = 0;
+    // Muros infinitos
+    this.wallTilemapLayers = [];
+    this.wallMapHeightPx = 0;
+    this.wallMapsCreados = 0;
   }
 
   init() {
     this.score = 0;
     this.isStuck = false;
+    this.isPlayingFalling = false; // Para animación de caída
     this.stuckTimer = null;
   }
 
   preload() {
-    this.load.image("star", "public/assets/star.png");
-    this.load.spritesheet("dude", "public/assets/dude.png", {
-      frameWidth: 32,
-      frameHeight: 48,
-    });
+    // Assets de juego
+    this.load.spritesheet("player", "public/assets/fall.png", { frameWidth: 46, frameHeight: 64 });
+    this.load.image("tileset", "public/assets/texture.png");
+    this.load.tilemapTiledJSON("map", "public/assets/tilemap/slime.json");
+    this.load.tilemapTiledJSON("wallmap", "public/assets/tilemap/slimewall.json");
+    // Intro y salto
+    this.load.spritesheet("inicio", "public/assets/inicio.png", { frameWidth: 184, frameHeight: 64 });
+    this.load.spritesheet("saltoizq", "public/assets/saltoizq.png", { frameWidth: 184, frameHeight: 182 });
+    this.load.spritesheet("saltoder", "public/assets/saltoder.png", { frameWidth: 184, frameHeight: 182 });
   }
 
   create() {
-    // Crea el jugador centrado arriba de la base
-    this.player = this.physics.add.sprite(360, 1200, "dude");
-    this.player.setBounce(0.2);
-    this.player.setCollideWorldBounds(true);
+    // Mapa base
+    const map = this.make.tilemap({ key: "map" });
+    const tiles = map.addTilesetImage("texture", "tileset");
+    this.floorLayer = map.createLayer("Floor", tiles, 0, 0);
+    this.wallLayer  = map.createLayer("Wall",  tiles, 0, 0);
+    this.floorLayer.setCollisionByExclusion([-1]);
+    this.wallLayer .setCollisionByExclusion([-1]);
 
-    // Rectángulos laterales como obstáculos físicos (dejan espacio central)
-    this.sideRects = this.physics.add.staticGroup();
+    // Coords de spawn
+    const objLayer = map.getObjectLayer("Point");
+    const spawnObj = objLayer.objects.find(o => o.name === "Spawn");
+    const spawnX = spawnObj ? spawnObj.x : this.scale.width/2;
+    const spawnY = spawnObj ? spawnObj.y : this.scale.height/2;
 
-    // Rectángulo izquierdo (de x=0 a x=209)
-    this.sideRects.create(105, 640, null)
-      .setDisplaySize(210, 1280)
-      .setOrigin(0.5)
-      .refreshBody();
-    this.add.rectangle(105, 640, 210, 1280, 0x7CFC7C); // Verde slime pastel
-    this.leftRect = this.add.rectangle(105, 640, 210, 1280, 0x7CFC7C).setDepth(10);
+    // Jugador, oculto hasta post-intro
+    this.player = this.physics.add.sprite(spawnX, spawnY, "player")
+      .setGravityY(0).setBounce(0.2).setCollideWorldBounds(true).setScale(2.6)
+      .setVisible(false);
+    this.player.setOffset(5, 0);
+    this.physics.add.collider(this.player, this.floorLayer);
+    // muros infinitos se añaden más tarde a partir de wallmap
 
-    // Rectángulo derecho (de x=510 a x=719)
-    this.sideRects.create(615, 640, null)
-      .setDisplaySize(210, 1280)
-      .setOrigin(0.5)
-      .refreshBody();
-    this.add.rectangle(615, 640, 210, 1280, 0x7CFC7C); // Verde slime pastel
-    this.rightRect = this.add.rectangle(615, 640, 210, 1280, 0x7CFC7C).setDepth(10);
+    // Input
+    this.cursors  = this.input.keyboard.createCursorKeys();
+    this.keyR     = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    // Colisión del jugador con los rectángulos
-    this.physics.add.collider(this.player, this.sideRects, this.handleStick, null, this);
+    // Animaciones intro/salto
+    this.anims.create({ key: 'intro',    frames: this.anims.generateFrameNumbers('inicio',   { start: 0,  end: 26 }), frameRate: 8, repeat: 0 });
+    this.anims.create({ key: 'preJump',  frames: this.anims.generateFrameNumbers('inicio',   { start: 27, end: 29 }), frameRate: 8, repeat: 0 });
+    this.anims.create({ key: 'jumpLeft', frames: this.anims.generateFrameNumbers('saltoizq', { start: 0,  end: 3  }), frameRate: 8, repeat: 0 });
+    this.anims.create({ key: 'jumpRight',frames: this.anims.generateFrameNumbers('saltoder',{ start: 0,  end: 3  }), frameRate: 8, repeat: 0 });
 
-    // Plataforma base (40px de alto, centrada abajo)
-    this.base = this.physics.add.staticSprite(360, 1260, null)
-      .setDisplaySize(720, 40)
-      .refreshBody();
-    this.add.rectangle(360, 1260, 720, 40, 0x888888);
+    // Animaciones de colisión y caída
+    this.anims.create({ key: "pegao", frames: [{ key: "player", frame: 1 }], frameRate: 10 });
+    this.anims.create({ key: "caida", frames: this.anims.generateFrameNumbers("player", { start: 2, end: 8 }), frameRate: 2, repeat: 0 });
 
-    // Colisión del jugador con la base
-    this.physics.add.collider(this.player, this.base);
+    // Logo/intro en spawn
+    this.logo = this.add.sprite(spawnX, spawnY, 'inicio').setScale(2.6);
+    this.logo.play('intro');
+    this.logo.once('animationcomplete-intro', () => this.introState = 1);
 
-    // Animaciones para el sprite "dude"
-    this.anims.create({
-      key: "left",
-      frames: this.anims.generateFrameNumbers("dude", { start: 0, end: 3 }),
-      frameRate: 10,
-      repeat: -1,
-    });
-
-    this.anims.create({
-      key: "turn",
-      frames: [{ key: "dude", frame: 4 }],
-      frameRate: 20,
-    });
-
-    this.anims.create({
-      key: "right",
-      frames: this.anims.generateFrameNumbers("dude", { start: 5, end: 8 }),
-      frameRate: 10,
-      repeat: -1,
-    });
-
-    this.anims.create({
-      key: "jump",
-      frames: [{ key: "dude", frame: 5 }],
-      frameRate: 10,
-    });
-
-    // Crea los cursores del teclado
-    this.cursors = this.input.keyboard.createCursorKeys();
-
-    // Tecla para reiniciar
-    this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-
-    // Aquí puedes agregar animaciones si las necesitas
-
+    // Cámara y límites
     this.cameras.main.startFollow(this.player);
-
-    // Limites del mundo
-    this.cameras.main.setBounds(0, -100000, 720, 100000 + 1280); // Mundo muy alto hacia arriba
+    this.cameras.main.setBounds(0, -100000, 720, 100000 + 1280);
     this.physics.world.setBounds(0, -100000, 720, 100000 + 1280);
   }
 
   update() {
-    if (this.isStuck === true) {
-      this.player.setVelocity(0, 0);
-
-      // Permitir salto mientras está pegado
-      if (this.cursors.up.isDown) {
-        this.player.body.allowGravity = true;
-        this.player.setVelocityY(-330); // Mismo impulso de salto
-        this.isStuck = false;
-        if (this.stuckTimer) this.stuckTimer.remove(false); // Cancela el timer si existe
-      }
-      return; // No permitir movimiento lateral mientras está pegado
-    }
-
-    // Permitir salto y movimiento lateral mientras cae lentamente
-    if (this.isStuck === "falling") {
-      // Permitir movimiento lateral
-      if (this.cursors.left.isDown) {
-        this.player.setVelocityX(-160);
-        this.player.anims.play("left", true);
-      } else if (this.cursors.right.isDown) {
-        this.player.setVelocityX(160);
-        this.player.anims.play("right", true);
-      } else {
-        this.player.setVelocityX(0);
-        this.player.anims.play("jump", true);
-      }
-
-      // Permitir salto
-      if (this.cursors.up.isDown) {
-        this.player.setVelocityY(-330);
-        this.isStuck = false;
-        if (this.stuckTimer) this.stuckTimer.remove(false);
+    // Fase intro/jump
+    if (this.introState < 3) {
+      if (Phaser.Input.Keyboard.JustDown(this.keySpace)) {
+        if (this.introState === 1) {
+          this.logo.play('preJump');
+          this.introState = 2;
+        } else if (this.introState === 2) {
+          const side = Phaser.Math.Between(0,1) === 0 ? 'jumpLeft' : 'jumpRight';
+          this.logo.play(side);
+          this.introState = 3;
+          this.logo.once(`animationcomplete-${side}`, () => {
+            // Destruir logo y habilitar jugador
+            this.logo.destroy();
+            this.player.setVisible(true);
+            // Añadir colisión con la capa base y muros infinitos
+            this.physics.add.collider(this.player, this.wallLayer, this.handleStick, null, this);
+            this.crearNuevaCapaWallmap(0);
+          });
+        }
       }
       return;
     }
 
+    // Gameplay normal
+    // Estado “pegado”
+    if (this.isStuck === true) {
+      this.player.setVelocity(0,0);
+      this.player.play('pegao', true);
+      if (this.cursors.up.isDown) {
+        this.player.body.allowGravity = true;
+        this.player.setVelocityY(-330);
+        this.isStuck = false;
+        this.stuckTimer.remove(false);
+      }
+      return;
+    }
+
+    // Estado “cayendo lento”
+    if (this.isStuck === 'falling') {
+      if (!this.isPlayingFalling) {
+        this.player.play('caida', true);
+        this.isPlayingFalling = true;
+      }
+      // Movimiento lateral en caída lenta
+      this.player.setVelocityX(this.cursors.left.isDown ? -160 : this.cursors.right.isDown ? 160 : 0);
+      if (this.cursors.up.isDown) {
+        this.player.setVelocityY(-330);
+        this.isStuck = false;
+        this.stuckTimer.remove(false);
+      }
+      return;
+    }
+
+    // Movimiento normal y salto
     if (this.cursors.left.isDown) {
-      this.player.setVelocityX(-160);
-      if (!this.player.body.touching.down) {
-        this.player.anims.play("jump", true);
-      } else {
-        this.player.anims.play("left", true);
-      }
+      this.player.setVelocityX(-160); this.player.flipX = false; this.player.setOffset(4,0);
     } else if (this.cursors.right.isDown) {
-      this.player.setVelocityX(160);
-      if (!this.player.body.touching.down) {
-        this.player.anims.play("jump", true);
-      } else {
-        this.player.anims.play("right", true);
-      }
+      this.player.setVelocityX(160); this.player.flipX = true; this.player.setOffset(-4,0);
     } else {
       this.player.setVelocityX(0);
-      if (!this.player.body.touching.down) {
-        this.player.anims.play("jump", true);
-      } else {
-        this.player.anims.play("turn");
-      }
     }
-
-    if (this.cursors.up.isDown && this.player.body.touching.down) {
+    if (this.cursors.up.isDown && (this.player.body.blocked.down || this.player.body.touching.down)) {
       this.player.setVelocityY(-330);
     }
-
     if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
-      
       this.scene.restart();
     }
-
-    // Mantener los rectángulos laterales infinitos
-    const cam = this.cameras.main;
-    const camCenterY = cam.scrollY + cam.height / 2;
-    const rectHeight = cam.height * 1.2; // Un poco más alto que la cámara
-
-    this.leftRect.y = camCenterY;
-    this.leftRect.height = rectHeight;
-
-    this.rightRect.y = camCenterY;
-    this.rightRect.height = rectHeight;
   }
 
-  handleStick(player, rect) {
-    // Solo pegarse si está en el aire y no está ya pegado
+  handleStick(player) {
     if (!this.isStuck && !player.body.touching.down) {
       this.isStuck = true;
-      player.setVelocity(0, 0);
+      player.setVelocity(0,0);
       player.body.allowGravity = false;
-
-      // Después de .5 segundos, empieza a caer lentamente
-      this.stuckTimer = this.time.delayedCall(500, () => {
+      this.stuckTimer = this.time.delayedCall(1000, () => {
         player.body.allowGravity = true;
-        player.setVelocityY(50); // Caída lenta
-        this.isStuck = "falling"; // Nuevo estado
+        player.setVelocityY(0);
+        this.isStuck = 'falling';
       });
     }
+  }
+
+  crearNuevaCapaWallmap(offsetY) {
+    const wallmap = this.make.tilemap({ key: "wallmap" });
+    const tileset = wallmap.addTilesetImage("texture", "tileset");
+    const wallLayer = wallmap.createLayer("Wall", tileset, 0, offsetY);
+    wallLayer.setCollisionByExclusion([-1]);
+    this.physics.add.collider(this.player, wallLayer, this.handleStick, null, this);
+    this.wallTilemapLayers.push({ wallLayer, offsetY });
+    if (this.wallMapHeightPx === 0) {
+      this.wallMapHeightPx = wallmap.height * wallmap.tileHeight;
+    }
+    this.wallMapsCreados++;
   }
 }

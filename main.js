@@ -3,7 +3,7 @@ import Game from "./scenes/Game.js";
 // Create a new Phaser config object
 const config = {
   type: Phaser.AUTO,
-  width: 720,
+  width: 736,
   height: 1280,
   scale: {
     mode: Phaser.Scale.FIT,
@@ -24,6 +24,13 @@ const config = {
       debug: true,
     },
   },
+
+  render: {
+    pixelArt: true, // Enable pixel art rendering
+    antialias: false, // Disable antialiasing for pixel art
+    roundPixels: true, // Ensure pixels are rendered as squares
+  },
+
   // List of scenes to load
   // Only the first scene will be shown
   // Remember to import the scene before adding it to the list
