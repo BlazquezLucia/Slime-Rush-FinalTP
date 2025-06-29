@@ -11,6 +11,8 @@ export default class Game extends Phaser.Scene {
 
   init() {
     this.score = 0;
+    this.direction = 0;
+    this.begingame= false;
     this.isStuck = false;
     this.isPlayingFalling = false; // Para animación de caída
     this.stuckTimer = null;
@@ -32,6 +34,7 @@ export default class Game extends Phaser.Scene {
     // Mapa base
     const map = this.make.tilemap({ key: "map" });
     const tiles = map.addTilesetImage("texture", "tileset");
+
     this.floorLayer = map.createLayer("Floor", tiles, 0, 0);
     this.wallLayer  = map.createLayer("Wall",  tiles, 0, 0);
     this.floorLayer.setCollisionByExclusion([-1]);
@@ -60,14 +63,14 @@ export default class Game extends Phaser.Scene {
     this.anims.create({ key: 'intro',    frames: this.anims.generateFrameNumbers('inicio',   { start: 0,  end: 26 }), frameRate: 8, repeat: 0 });
     this.anims.create({ key: 'preJump',  frames: this.anims.generateFrameNumbers('inicio',   { start: 27, end: 29 }), frameRate: 8, repeat: 0 });
     this.anims.create({ key: 'jumpLeft', frames: this.anims.generateFrameNumbers('saltoizq', { start: 0,  end: 3  }), frameRate: 8, repeat: 0 });
-    this.anims.create({ key: 'jumpRight',frames: this.anims.generateFrameNumbers('saltoder',{ start: 0,  end: 3  }), frameRate: 8, repeat: 0 });
+    this.anims.create({ key: 'jump',frames: this.anims.generateFrameNumbers('saltoder',{ start: 0,  end: 3  }), frameRate: 8, repeat: 0 });
 
     // Animaciones de colisión y caída
     this.anims.create({ key: "pegao", frames: [{ key: "player", frame: 1 }], frameRate: 10 });
     this.anims.create({ key: "caida", frames: this.anims.generateFrameNumbers("player", { start: 2, end: 8 }), frameRate: 2, repeat: 0 });
 
     // Logo/intro en spawn
-    this.logo = this.add.sprite(spawnX, spawnY, 'inicio').setScale(2.6);
+    this.logo = this.add.sprite(spawnX, spawnY, 'inicio').setScale(2.6).setOrigin(0.5, 0.5);
     this.logo.play('intro');
     this.logo.once('animationcomplete-intro', () => this.introState = 1);
 
@@ -80,31 +83,78 @@ export default class Game extends Phaser.Scene {
   update() {
     // Fase intro/jump
     if (this.introState < 3) {
-      if (Phaser.Input.Keyboard.JustDown(this.keySpace)) {
-        if (this.introState === 1) {
-          this.logo.play('preJump');
-          this.introState = 2;
-        } else if (this.introState === 2) {
-          const side = Phaser.Math.Between(0,1) === 0 ? 'jumpLeft' : 'jumpRight';
-          this.logo.play(side);
-          this.introState = 3;
-          this.logo.once(`animationcomplete-${side}`, () => {
-            // Destruir logo y habilitar jugador
-            this.logo.destroy();
-            this.player.setVisible(true);
-            // Añadir colisión con la capa base y muros infinitos
-            this.physics.add.collider(this.player, this.wallLayer, this.handleStick, null, this);
-            this.crearNuevaCapaWallmap(0);
-          });
+    if (Phaser.Input.Keyboard.JustDown(this.keySpace)) {
+    if (this.introState === 1) {
+      this.logo.play('preJump');
+      this.introState = 2;
+    } 
+    else if (this.introState === 2) {
+      // Elegimos aleatoriamente -1 (izq) o +1 (der)
+      const direction = Phaser.Math.Between(0, 1) === 0 ? -1 : 1;
+      this.direction = direction;
+      // Asumimos una sola animación 'jump' que cubre ambos saltos
+
+      // 1) Guardamos la posición del logo ANTES de la animación
+
+
+    // Asignamos la animación y la orientación
+    this.logo.flipX = (direction === -1);
+    this.logo.setOrigin(0.5, 0.8);
+    this.logo.play('jump');
+
+    this.introState = 3;
+
+    this.logo.once('animationcomplete-jump', () => {
+        const finalFlipX = this.logo.flipX;
+        const initialY = this.logo.y; 
+
+     
+        this.logo.destroy();
+
+        this.player.setVisible(true);
+         const playerHalfWidth = (this.player.displayWidth*3) / 2;
+        let finalX;
+        let newOffset;
+
+        if (finalFlipX) { 
+            newOffset = { x: -2, y: 0 };
+            finalX = playerHalfWidth + newOffset.x;
+        } else { 
+            newOffset = { x: 2, y: 0 };
+            finalX = this.scale.width - playerHalfWidth + newOffset.x;
         }
-      }
-      return;
+
+        const finalY = initialY - 200;
+
+        this.player.setPosition(finalX, finalY);
+        this.player.flipX = finalFlipX;
+        this.player.setOffset(newOffset.x, newOffset.y);
+    
+
+        this.physics.add.collider(this.player, this.wallLayer, this.handleStick, null, this);
+        this.crearNuevaCapaWallmap(0);
+        
+        if (finalFlipX) { 
+            this.player.setVelocityX(-5); 
+        } else { 
+            this.player.setVelocityX(5);
+        }
+        
+        this.begingame = true;
+    });
+    }
+  
+  return;
+}
+
     }
 
     // Gameplay normal
     // Estado “pegado”
     if (this.isStuck === true) {
       this.player.setVelocity(0,0);
+      this.player.flipX = this.direction === 1 ? true : false;
+      this.player.setOffset(0, 0);
       this.player.play('pegao', true);
       if (this.cursors.up.isDown) {
         this.player.body.allowGravity = true;
@@ -133,11 +183,11 @@ export default class Game extends Phaser.Scene {
 
     // Movimiento normal y salto
     if (this.cursors.left.isDown) {
-      this.player.setVelocityX(-160); this.player.flipX = false; this.player.setOffset(4,0);
+      this.player.setVelocityX(-160); this.player.flipX = false; this.player.setOffset(4,0); this.direction = -1;
     } else if (this.cursors.right.isDown) {
-      this.player.setVelocityX(160); this.player.flipX = true; this.player.setOffset(-4,0);
-    } else {
-      this.player.setVelocityX(0);
+      this.player.setVelocityX(160); this.player.flipX = true; this.player.setOffset(-4,0); this.direction = 1;
+    } else if (this.direction !== 0) {
+      this.player.setVelocityX(0); this.player.flipX = this.direction === 1? true: false; this.player.setOffset(4,0);
     }
     if (this.cursors.up.isDown && (this.player.body.blocked.down || this.player.body.touching.down)) {
       this.player.setVelocityY(-330);
@@ -148,7 +198,7 @@ export default class Game extends Phaser.Scene {
   }
 
   handleStick(player) {
-    if (!this.isStuck && !player.body.touching.down) {
+    if ((!this.isStuck && !player.body.touching.down) || this.begingame === true) {
       this.isStuck = true;
       player.setVelocity(0,0);
       player.body.allowGravity = false;
