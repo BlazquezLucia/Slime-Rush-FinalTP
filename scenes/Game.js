@@ -139,7 +139,15 @@ export default class Game extends Phaser.Scene {
         } else { 
             this.player.setVelocityX(5);
         }
-        
+
+        if (this.direction === 1) {
+          this.player.flipX = true; 
+          this.direction = -1;
+        } else {
+          this.player.flipX = false; 
+          this.direction = 1;
+        }
+
         this.begingame = true;
     });
     }
@@ -153,7 +161,7 @@ export default class Game extends Phaser.Scene {
     // Estado “pegado”
     if (this.isStuck === true) {
       this.player.setVelocity(0,0);
-      this.player.flipX = this.direction === 1 ? true : false;
+      this.player.flipX = this.direction === 1 ? false : true;
       this.player.setOffset(0, 0);
       this.player.play('pegao', true);
       if (this.cursors.up.isDown) {
@@ -173,28 +181,29 @@ export default class Game extends Phaser.Scene {
       }
       // Movimiento lateral en caída lenta
       this.player.setVelocityX(this.cursors.left.isDown ? -160 : this.cursors.right.isDown ? 160 : 0);
-      if (this.cursors.up.isDown) {
-        this.player.setVelocityY(-330);
-        this.isStuck = false;
-        this.stuckTimer.remove(false);
-      }
+    if (this.begingame && Phaser.Input.Keyboard.JustDown(this.keySpace)) {
+      this.player.setVelocityX(500*this.direction);
+      this.player.setVelocityY(-500);
+      this.isStuck = false;
+      this.stuckTimer.remove(false);
+        if (this.direction === 1) {
+          this.player.flipX = true; 
+          this.direction = -1;
+        } else {
+          this.player.flipX = false; 
+          this.direction = 1;
+        }
+
+  }
       return;
     }
 
     // Movimiento normal y salto
-    if (this.cursors.left.isDown) {
-      this.player.setVelocityX(-160); this.player.flipX = false; this.player.setOffset(4,0); this.direction = -1;
-    } else if (this.cursors.right.isDown) {
-      this.player.setVelocityX(160); this.player.flipX = true; this.player.setOffset(-4,0); this.direction = 1;
-    } else if (this.direction !== 0) {
-      this.player.setVelocityX(0); this.player.flipX = this.direction === 1? true: false; this.player.setOffset(4,0);
-    }
-    if (this.cursors.up.isDown && (this.player.body.blocked.down || this.player.body.touching.down)) {
-      this.player.setVelocityY(-330);
-    }
+
     if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
       this.scene.restart();
-    }
+    } 
+    
   }
 
   handleStick(player) {
