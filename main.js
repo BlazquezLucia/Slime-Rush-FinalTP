@@ -1,9 +1,12 @@
+import Menu from "./scenes/Menu.Js";
 import Game from "./scenes/Game.js";
+
+
 
 // Create a new Phaser config object
 const config = {
   type: Phaser.AUTO,
-  width: 736,
+  width: 720,
   height: 1280,
   scale: {
     mode: Phaser.Scale.FIT,
@@ -34,7 +37,7 @@ const config = {
   // List of scenes to load
   // Only the first scene will be shown
   // Remember to import the scene before adding it to the list
-  scene: [Game],
+  scene: [Menu, Game], // Menu primero
 };
 
 // Create a new Phaser game instance
