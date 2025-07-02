@@ -1,6 +1,5 @@
-import Menu from "./scenes/Menu.js";
+import Menu from "./scenes/Menu.Js";
 import Game from "./scenes/Game.js";
-
 
 
 
@@ -25,7 +24,7 @@ const config = {
     default: "arcade",
     arcade: {
       gravity: { y: 200 },
-      debug: true,
+      debug: false,
     },
   },
 
